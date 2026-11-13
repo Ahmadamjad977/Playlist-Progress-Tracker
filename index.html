@@ -117,6 +117,7 @@
           </div>
         </div>
 
+        <p id="videoCount" class="muted tiny result-count"></p>
         <ul id="videoList" class="videos"></ul>
         <p id="videoEmpty" class="empty" hidden>No videos match your search or filter.</p>
       </section>
@@ -158,6 +159,19 @@
           <h2>Your data</h2>
           <p class="muted">Playlists and progress are saved in this browser only. Clearing them cannot be undone.</p>
           <button class="btn btn-danger" data-action="clear-data" type="button">Remove all playlists</button>
+        </div>
+
+        <div class="card settings">
+          <h2>Backup and move to another device</h2>
+          <p class="muted">
+            Your progress lives in this browser only. To use the same playlists on your phone or another
+            browser, export a backup file here and import it there. The backup does not include your API key.
+          </p>
+          <div class="row buttons">
+            <button class="btn btn-primary" data-action="export-backup" type="button">Export backup</button>
+            <button class="btn btn-ghost" data-action="import-backup" type="button">Import backup</button>
+          </div>
+          <input id="importFile" type="file" accept=".json,application/json" hidden>
         </div>
 
         <div class="card settings">
