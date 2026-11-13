@@ -67,8 +67,9 @@ function formatDuration(seconds) {
 
 // 12500 -> "3h 28m"
 function formatTotalTime(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
+  const minutes = Math.round(seconds / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   if (h === 0) return m + "m";
   return h + "h " + m + "m";
 }
@@ -124,25 +125,47 @@ function loadData() {
 
 /* ---------- 4. Progress calculations ---------- */
 
-// Progress Percentage = (Completed Videos / Total Videos) x 100
+/*
+  Progress is based on TIME, not on the number of videos:
+
+  Progress Percentage = (Total length of completed videos / Total length of all videos) x 100
+
+  A 60 minute video therefore counts more than a 5 minute video.
+  If YouTube gave no duration for any video (total length is 0), we fall back to counting videos.
+*/
 function getStats(videos) {
   const total = videos.length;
   const done = videos.filter(v => v.completed).length;
-  const percent = total === 0 ? 0 : (done / total) * 100;
-  return { total, done, pending: total - done, percent };
+
+  const totalSeconds = videos.reduce((sum, v) => sum + (v.duration || 0), 0);
+  const doneSeconds = videos.filter(v => v.completed).reduce((sum, v) => sum + (v.duration || 0), 0);
+
+  let percent = 0;
+  if (totalSeconds > 0) percent = (doneSeconds / totalSeconds) * 100;
+  else if (total > 0) percent = (done / total) * 100;
+
+  return {
+    total, done, pending: total - done,
+    totalSeconds, doneSeconds, leftSeconds: totalSeconds - doneSeconds,
+    percent
+  };
 }
 
-// Shows progress with decimals so a single video is visible even in big playlists.
-// 2 of 178 videos -> "1.1%". Never shows 100% until every video is done.
+// Shows progress with decimals so small steps are visible even in long playlists.
+// Never shows 100% until every video is completed.
 function formatPercent(stats) {
   const p = stats.percent;
   if (p <= 0) return "0%";
-  if (p >= 100) return "100%";
+
   const decimals = stats.total >= 1000 ? 2 : 1;
   const step = Math.pow(10, decimals);
+  const almostDone = (100 - 1 / step).toFixed(decimals) + "%";   // e.g. 99.9%
+
+  if (p >= 100) return stats.pending === 0 ? "100%" : almostDone;
+
   let rounded = Math.round(p * step) / step;
-  if (rounded >= 100) rounded = 100 - 1 / step;   // 99.96 must not look like 100
-  if (rounded <= 0) rounded = 1 / step;           // some progress must not look like 0
+  if (rounded >= 100) return almostDone;      // 99.96 must not look like 100
+  if (rounded <= 0) rounded = 1 / step;       // some progress must not look like 0
   return rounded.toFixed(decimals) + "%";
 }
 
@@ -348,7 +371,8 @@ function dashboardRowHTML(p) {
         '<p class="muted tiny">' + esc(p.channel) + '</p>' +
         '<div class="dr-progress">' +
           '<span class="dr-percent">' + formatPercent(s) + '</span>' +
-          '<span class="muted">' + s.done + ' of ' + s.total + ' videos completed, ' + s.pending + ' remaining</span>' +
+          '<span class="muted">' + formatTotalTime(s.doneSeconds) + ' of ' + formatTotalTime(s.totalSeconds) +
+            ' watched (' + s.done + ' of ' + s.total + ' videos)</span>' +
         '</div>' +
         progressBarHTML(s) +
       '</div>' +
@@ -374,7 +398,9 @@ function renderPlaylistLists() {
 function renderDashboard() {
   const o = getOverallStats();
   $("#overallPercent").textContent = formatPercent(o);
-  $("#overallCounts").textContent = o.done + " of " + o.total + " videos completed";
+  $("#overallCounts").textContent =
+    formatTotalTime(o.doneSeconds) + " of " + formatTotalTime(o.totalSeconds) +
+    " watched (" + o.done + " of " + o.total + " videos)";
   $("#overallBar").style.width = o.percent.toFixed(2) + "%";
   $("#statPlaylists").textContent = o.playlists;
   $("#statTotal").textContent = o.total;
@@ -387,8 +413,6 @@ function renderDetailHeader() {
   const p = getPlaylist(state.activeId);
   if (!p) return;
   const s = getStats(p.videos);
-  const totalSeconds = p.videos.reduce((sum, v) => sum + (v.duration || 0), 0);
-  const leftSeconds = p.videos.filter(v => !v.completed).reduce((sum, v) => sum + (v.duration || 0), 0);
 
   $("#detailThumb").src = p.thumbnail || PLACEHOLDER;
   $("#detailTitle").textContent = p.title;
@@ -397,7 +421,8 @@ function renderDetailHeader() {
   $("#detailCounts").textContent = s.done + " completed, " + s.pending + " remaining";
   $("#detailBar").style.width = s.percent.toFixed(2) + "%";
   $("#detailTime").textContent =
-    "Total length " + formatTotalTime(totalSeconds) + ". About " + formatTotalTime(leftSeconds) + " left to watch.";
+    "Watched " + formatTotalTime(s.doneSeconds) + " of " + formatTotalTime(s.totalSeconds) +
+    ". About " + formatTotalTime(s.leftSeconds) + " left to watch.";
 }
 
 function videoRowHTML(v, number, playlistId) {
