@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playlist Progress Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app">
+
+    <!-- ===== Sidebar navigation ===== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="assets/favicon.svg" alt="" width="32" height="32">
+        <span>Playlist Tracker</span>
+      </div>
+
+      <nav class="nav" aria-label="Main">
+        <button class="nav-btn active" data-action="nav" data-view="dashboard">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-btn" data-action="nav" data-view="playlists">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h8v2H3v-2zm15-4v6.5a2.5 2.5 0 1 1-2-2.45V10h6v2h-4z"/></svg>
+          <span>My Playlists</span>
+          <em class="badge" id="playlistBadge">0</em>
+        </button>
+        <button class="nav-btn" data-action="nav" data-view="settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9V5h2v2h5v2h-5v2h-2V9H4V7zm0 8h5v-2h2v2h9v2H11v2H9v-2H4v-2z"/></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- ===== Main area ===== -->
+    <main class="main">
+
+      <!-- Import bar (visible on every page) -->
+      <header class="topbar">
+        <form id="importForm" class="import" novalidate>
+          <label for="playlistUrl" class="sr-only">YouTube playlist URL</label>
+          <input id="playlistUrl" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Paste a public YouTube playlist link">
+          <button id="importBtn" class="btn btn-primary" type="submit">Import playlist</button>
+        </form>
+        <p id="importStatus" class="status" role="status" aria-live="polite"></p>
+      </header>
+
+      <!-- ===== Dashboard ===== -->
+      <section id="view-dashboard" class="view">
+        <h1>Dashboard</h1>
+
+        <!-- Each playlist is shown separately with its own progress -->
+        <h2 class="first">Progress by playlist</h2>
+        <div id="dashboardPlaylists" class="stack"></div>
+
+        <!-- Combined numbers for all playlists (secondary) -->
+        <h2>All playlists combined</h2>
+        <div class="card overall">
+          <div class="overall-head">
+            <div class="overall-main">
+              <span class="big small" id="overallPercent">0%</span>
+              <span class="muted" id="overallCounts">0 of 0 videos completed</span>
+            </div>
+          </div>
+          <div class="bar" id="overallBarTrack"><div class="bar-fill" id="overallBar"></div></div>
+
+          <dl class="stats">
+            <div><dt>Playlists</dt><dd id="statPlaylists">0</dd></div>
+            <div><dt>Total videos</dt><dd id="statTotal">0</dd></div>
+            <div><dt>Completed</dt><dd id="statDone">0</dd></div>
+            <div><dt>Remaining</dt><dd id="statLeft">0</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- ===== My Playlists ===== -->
+      <section id="view-playlists" class="view" hidden>
+        <h1>My Playlists</h1>
+        <div id="playlistGrid" class="grid"></div>
+      </section>
+
+      <!-- ===== Playlist detail ===== -->
+      <section id="view-detail" class="view" hidden>
+        <button class="btn btn-ghost back" data-action="back">&larr; Back to playlists</button>
+
+        <div class="card detail-head">
+          <img id="detailThumb" class="detail-thumb" alt="">
+          <div class="detail-info">
+            <h1 id="detailTitle"></h1>
+            <p class="muted" id="detailMeta"></p>
+
+            <div class="detail-progress">
+              <span class="big small" id="detailPercent">0%</span>
+              <span class="muted" id="detailCounts"></span>
+            </div>
+            <div class="bar"><div class="bar-fill" id="detailBar"></div></div>
+            <p class="muted tiny" id="detailTime"></p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <input id="searchInput" type="search" placeholder="Search videos in this playlist" aria-label="Search videos">
+
+          <div class="segmented" role="group" aria-label="Filter videos">
+            <button data-action="filter" data-filter="all" class="active">All</button>
+            <button data-action="filter" data-filter="completed">Completed</button>
+            <button data-action="filter" data-filter="pending">Pending</button>
+          </div>
+
+          <div class="toolbar-actions">
+            <button id="syncBtn" class="btn btn-ghost" data-action="sync" title="Fetch the latest videos from YouTube. Your progress is kept.">Sync from YouTube</button>
+            <button class="btn btn-ghost" data-action="reset" title="Mark every video as not completed">Reset progress</button>
+          </div>
+        </div>
+
+        <ul id="videoList" class="videos"></ul>
+        <p id="videoEmpty" class="empty" hidden>No videos match your search or filter.</p>
+      </section>
+
+      <!-- ===== Settings ===== -->
+      <section id="view-settings" class="view" hidden>
+        <h1>Settings</h1>
+
+        <div class="card settings">
+          <h2>YouTube Data API key</h2>
+          <p class="muted">
+            Importing playlists needs your own free YouTube Data API v3 key. The key is stored only in this
+            browser (LocalStorage) and is sent only to Google. It is not part of the source code.
+          </p>
+
+          <label for="apiKeyInput" class="field-label">API key</label>
+          <div class="row">
+            <input id="apiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key">
+            <button class="btn btn-ghost" data-action="toggle-key" type="button">Show</button>
+          </div>
+          <div class="row buttons">
+            <button class="btn btn-primary" data-action="save-key" type="button">Save key</button>
+            <button class="btn btn-ghost" data-action="clear-key" type="button">Remove key</button>
+          </div>
+
+          <details class="howto">
+            <summary>How do I get an API key?</summary>
+            <ol>
+              <li>Open the Google Cloud Console and create a project.</li>
+              <li>Enable <strong>YouTube Data API v3</strong> for that project.</li>
+              <li>Go to Credentials, then Create credentials, then API key.</li>
+              <li>Restrict the key to the YouTube Data API, and to your website address if you deploy this app.</li>
+              <li>Paste the key above and choose Save key.</li>
+            </ol>
+          </details>
+        </div>
+
+        <div class="card settings">
+          <h2>Your data</h2>
+          <p class="muted">Playlists and progress are saved in this browser only. Clearing them cannot be undone.</p>
+          <button class="btn btn-danger" data-action="clear-data" type="button">Remove all playlists</button>
+        </div>
+
+        <div class="card settings">
+          <h2>About progress tracking</h2>
+          <p class="muted">
+            Watching a video on YouTube does not update this app. Tick a video yourself when you finish it.
+          </p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
