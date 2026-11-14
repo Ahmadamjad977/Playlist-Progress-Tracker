@@ -117,6 +117,7 @@
           </div>
         </div>
 
+        <p id="videoCount" class="muted tiny result-count"></p>
         <ul id="videoList" class="videos"></ul>
         <p id="videoEmpty" class="empty" hidden>No videos match your search or filter.</p>
       </section>
@@ -124,6 +125,31 @@
       <!-- ===== Settings ===== -->
       <section id="view-settings" class="view" hidden>
         <h1>Settings</h1>
+
+        <div class="card settings">
+          <h2>Account and sync</h2>
+          <p class="muted">
+            Sign in to keep your playlists and progress in your account, so they appear on every device
+            where you sign in. Without signing in, everything stays in this browser only.
+          </p>
+
+          <p id="cloudNotConfigured" class="muted" hidden></p>
+
+          <div id="cloudSignedOut" hidden>
+            <button class="btn btn-primary" data-action="sign-in" type="button">Sign in with Google</button>
+          </div>
+
+          <div id="cloudSignedIn" hidden>
+            <p>Signed in as <strong id="cloudUser"></strong></p>
+            <div class="row buttons">
+              <button class="btn btn-ghost" data-action="sign-out" type="button">Sign out</button>
+              <button class="btn btn-ghost" data-action="sign-out-clear" type="button" title="Signs out and removes the playlists from this device. They stay in your account.">Sign out and clear this device</button>
+            </div>
+          </div>
+
+          <p id="cloudStatus" class="status" role="status" aria-live="polite"></p>
+          <p class="muted tiny">Your YouTube API key is not synced. Paste it once on each device where you import playlists.</p>
+        </div>
 
         <div class="card settings">
           <h2>YouTube Data API key</h2>
@@ -156,14 +182,31 @@
 
         <div class="card settings">
           <h2>Your data</h2>
-          <p class="muted">Playlists and progress are saved in this browser only. Clearing them cannot be undone.</p>
+          <p class="muted">Playlists and progress are saved in this browser. When you are signed in they are also saved in your account. Removing them cannot be undone.</p>
           <button class="btn btn-danger" data-action="clear-data" type="button">Remove all playlists</button>
+        </div>
+
+        <div class="card settings">
+          <h2>Backup and move to another device</h2>
+          <p class="muted">
+            A backup file is a manual alternative to signing in. Export one here and import it on another
+            device or browser. The backup does not include your API key.
+          </p>
+          <div class="row buttons">
+            <button class="btn btn-primary" data-action="export-backup" type="button">Export backup</button>
+            <button class="btn btn-ghost" data-action="import-backup" type="button">Import backup</button>
+          </div>
+          <input id="importFile" type="file" accept=".json,application/json" hidden>
         </div>
 
         <div class="card settings">
           <h2>About progress tracking</h2>
           <p class="muted">
             Watching a video on YouTube does not update this app. Tick a video yourself when you finish it.
+          </p>
+          <p class="muted">
+            Progress is calculated by time: completed video length divided by total playlist length.
+            A 60 minute video counts more than a 5 minute video.
           </p>
         </div>
       </section>
@@ -173,6 +216,13 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
+  <!-- Firebase (optional: account login and sync). The app also works if these fail to load. -->
+  <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script src="cloud.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

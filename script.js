@@ -11,6 +11,8 @@
    6. Rendering (dashboard, playlists, detail view)
    7. Actions (import, remove, toggle, sync...)
    8. Event listeners and start-up
+
+   Account login and cloud sync live in cloud.js (loaded before this file).
    ========================================================== */
 
 "use strict";
@@ -31,6 +33,8 @@ const state = {
   search: "",
   busy: false          // true while talking to the YouTube API
 };
+
+let listTimer = null;  // used to refresh the video list shortly after a tick
 
 /*
   A video looks like:
@@ -65,8 +69,9 @@ function formatDuration(seconds) {
 
 // 12500 -> "3h 28m"
 function formatTotalTime(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
+  const minutes = Math.round(seconds / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   if (h === 0) return m + "m";
   return h + "h " + m + "m";
 }
@@ -122,12 +127,48 @@ function loadData() {
 
 /* ---------- 4. Progress calculations ---------- */
 
-// Progress Percentage = (Completed Videos / Total Videos) x 100
+/*
+  Progress is based on TIME, not on the number of videos:
+
+  Progress Percentage = (Total length of completed videos / Total length of all videos) x 100
+
+  A 60 minute video therefore counts more than a 5 minute video.
+  If YouTube gave no duration for any video (total length is 0), we fall back to counting videos.
+*/
 function getStats(videos) {
   const total = videos.length;
   const done = videos.filter(v => v.completed).length;
-  const percent = total === 0 ? 0 : (done / total) * 100;
-  return { total, done, pending: total - done, percent };
+
+  const totalSeconds = videos.reduce((sum, v) => sum + (v.duration || 0), 0);
+  const doneSeconds = videos.filter(v => v.completed).reduce((sum, v) => sum + (v.duration || 0), 0);
+
+  let percent = 0;
+  if (totalSeconds > 0) percent = (doneSeconds / totalSeconds) * 100;
+  else if (total > 0) percent = (done / total) * 100;
+
+  return {
+    total, done, pending: total - done,
+    totalSeconds, doneSeconds, leftSeconds: totalSeconds - doneSeconds,
+    percent
+  };
+}
+
+// Shows progress with decimals so small steps are visible even in long playlists.
+// Never shows 100% until every video is completed.
+function formatPercent(stats) {
+  const p = stats.percent;
+  if (p <= 0) return "0%";
+
+  const decimals = stats.total >= 1000 ? 2 : 1;
+  const step = Math.pow(10, decimals);
+  const almostDone = (100 - 1 / step).toFixed(decimals) + "%";   // e.g. 99.9%
+
+  if (p >= 100) return stats.pending === 0 ? "100%" : almostDone;
+
+  let rounded = Math.round(p * step) / step;
+  if (rounded >= 100) return almostDone;      // 99.96 must not look like 100
+  if (rounded <= 0) rounded = 1 / step;       // some progress must not look like 0
+  return rounded.toFixed(decimals) + "%";
 }
 
 function getOverallStats() {
@@ -299,7 +340,7 @@ async function buildPlaylist(playlistId, previous, onProgress) {
 /* ---------- 6. Rendering ---------- */
 
 function progressBarHTML(stats) {
-  return '<div class="bar"><div class="bar-fill" style="width:' + stats.percent.toFixed(1) + '%"></div></div>';
+  return '<div class="bar"><div class="bar-fill" style="width:' + stats.percent.toFixed(2) + '%"></div></div>';
 }
 
 function playlistCardHTML(p) {
@@ -311,7 +352,7 @@ function playlistCardHTML(p) {
         '<h3>' + esc(p.title) + '</h3>' +
         '<p class="muted tiny">' + esc(p.channel) + ', ' + s.total + ' videos</p>' +
         progressBarHTML(s) +
-        '<div class="pc-percent"><span>' + Math.round(s.percent) + '% complete</span>' +
+        '<div class="pc-percent"><span>' + formatPercent(s) + ' complete</span>' +
         '<span>' + s.done + ' / ' + s.total + '</span></div>' +
         '<div class="pc-actions">' +
           '<button class="btn btn-primary" data-action="open" data-id="' + esc(p.id) + '">Open</button>' +
@@ -331,8 +372,9 @@ function dashboardRowHTML(p) {
         '<h3>' + esc(p.title) + '</h3>' +
         '<p class="muted tiny">' + esc(p.channel) + '</p>' +
         '<div class="dr-progress">' +
-          '<span class="dr-percent">' + Math.round(s.percent) + '%</span>' +
-          '<span class="muted">' + s.done + ' of ' + s.total + ' videos completed, ' + s.pending + ' remaining</span>' +
+          '<span class="dr-percent">' + formatPercent(s) + '</span>' +
+          '<span class="muted">' + formatTotalTime(s.doneSeconds) + ' of ' + formatTotalTime(s.totalSeconds) +
+            ' watched (' + s.done + ' of ' + s.total + ' videos)</span>' +
         '</div>' +
         progressBarHTML(s) +
       '</div>' +
@@ -357,9 +399,11 @@ function renderPlaylistLists() {
 
 function renderDashboard() {
   const o = getOverallStats();
-  $("#overallPercent").textContent = Math.round(o.percent) + "%";
-  $("#overallCounts").textContent = o.done + " of " + o.total + " videos completed";
-  $("#overallBar").style.width = o.percent.toFixed(1) + "%";
+  $("#overallPercent").textContent = formatPercent(o);
+  $("#overallCounts").textContent =
+    formatTotalTime(o.doneSeconds) + " of " + formatTotalTime(o.totalSeconds) +
+    " watched (" + o.done + " of " + o.total + " videos)";
+  $("#overallBar").style.width = o.percent.toFixed(2) + "%";
   $("#statPlaylists").textContent = o.playlists;
   $("#statTotal").textContent = o.total;
   $("#statDone").textContent = o.done;
@@ -371,17 +415,16 @@ function renderDetailHeader() {
   const p = getPlaylist(state.activeId);
   if (!p) return;
   const s = getStats(p.videos);
-  const totalSeconds = p.videos.reduce((sum, v) => sum + (v.duration || 0), 0);
-  const leftSeconds = p.videos.filter(v => !v.completed).reduce((sum, v) => sum + (v.duration || 0), 0);
 
   $("#detailThumb").src = p.thumbnail || PLACEHOLDER;
   $("#detailTitle").textContent = p.title;
   $("#detailMeta").textContent = p.channel + ", " + s.total + " videos";
-  $("#detailPercent").textContent = Math.round(s.percent) + "%";
+  $("#detailPercent").textContent = formatPercent(s);
   $("#detailCounts").textContent = s.done + " completed, " + s.pending + " remaining";
-  $("#detailBar").style.width = s.percent.toFixed(1) + "%";
+  $("#detailBar").style.width = s.percent.toFixed(2) + "%";
   $("#detailTime").textContent =
-    "Total length " + formatTotalTime(totalSeconds) + ". About " + formatTotalTime(leftSeconds) + " left to watch.";
+    "Watched " + formatTotalTime(s.doneSeconds) + " of " + formatTotalTime(s.totalSeconds) +
+    ". About " + formatTotalTime(s.leftSeconds) + " left to watch.";
 }
 
 function videoRowHTML(v, number, playlistId) {
@@ -421,6 +464,11 @@ function renderVideoList() {
 
   $("#videoList").innerHTML = rows.join("");
   $("#videoEmpty").hidden = rows.length > 0;
+
+  const total = p.videos.length;
+  $("#videoCount").textContent = (state.filter === "all" && !term)
+    ? total + " videos"
+    : "Showing " + rows.length + " of " + total + " videos";
 }
 
 function renderAll() {
@@ -491,6 +539,7 @@ async function importPlaylist(rawInput) {
     const playlist = await buildPlaylist(playlistId, null, count => setStatus("Fetched " + count + " videos..."));
     state.playlists.push(playlist);
     saveData();
+    cloudSavePlaylist(playlist);
     renderAll();
     $("#playlistUrl").value = "";
     setStatus("Imported \"" + playlist.title + "\" with " + playlist.videos.length + " videos.", "ok");
@@ -514,6 +563,7 @@ async function syncActivePlaylist() {
     const index = state.playlists.findIndex(p => p.id === current.id);
     state.playlists[index] = fresh;
     saveData();
+    cloudSavePlaylist(fresh);
     renderAll();
     toast("Playlist updated. Your progress was kept.");
   } catch (err) {
@@ -527,11 +577,13 @@ async function syncActivePlaylist() {
 function removePlaylist(id) {
   const p = getPlaylist(id);
   if (!p) return;
-  if (!confirm("Remove \"" + p.title + "\" and its saved progress?")) return;
+  const where = cloud.user ? " from this device and your account" : "";
+  if (!confirm("Remove \"" + p.title + "\" and its saved progress" + where + "?")) return;
 
   state.playlists = state.playlists.filter(item => item.id !== id);
   if (state.activeId === id) state.activeId = null;
   saveData();
+  cloudDeletePlaylist(id);
   renderAll();
   if (state.view === "detail") showView("playlists");
   toast("Playlist removed.");
@@ -545,17 +597,21 @@ function toggleVideo(videoId, checked) {
 
   video.completed = checked;
   saveData();
+  cloudQueueProgress(p);
 
   renderDetailHeader();
   renderDashboard();
   renderPlaylistLists();
 
-  if (state.filter === "all") {
-    // Just restyle the row, no need to rebuild the list.
-    const row = $('.video[data-video-id="' + CSS.escape(videoId) + '"]');
-    if (row) row.classList.toggle("done", checked);
-  } else {
-    renderVideoList();   // the video may no longer belong in this filter
+  // Restyle the row right away, in every case.
+  const row = $('.video[data-video-id="' + CSS.escape(videoId) + '"]');
+  if (row) row.classList.toggle("done", checked);
+
+  // In the Completed / Pending filters the video no longer belongs in the list after a tick.
+  // Wait a moment before refreshing so the list does not jump while you are ticking.
+  if (state.filter !== "all") {
+    clearTimeout(listTimer);
+    listTimer = setTimeout(renderVideoList, 900);
   }
 }
 
@@ -567,6 +623,7 @@ function resetProgress() {
 
   p.videos.forEach(v => { v.completed = false; });
   saveData();
+  cloudQueueProgress(p);
   renderAll();
   toast("Progress reset.");
 }
@@ -588,12 +645,91 @@ function clearApiKey() {
 
 function clearAllData() {
   if (!state.playlists.length) { toast("There are no playlists to remove."); return; }
-  if (!confirm("Remove all playlists and progress? This cannot be undone.")) return;
+  const where = cloud.user ? " from this device and your account" : "";
+  if (!confirm("Remove all playlists and progress" + where + "? This cannot be undone.")) return;
+  const ids = state.playlists.map(p => p.id);
   state.playlists = [];
   state.activeId = null;
   saveData();
+  cloudDeleteAll(ids);
   renderAll();
   toast("All playlists removed.");
+}
+
+/* ---------- Backup: export / import (move progress between devices) ---------- */
+
+// Keep only the fields we expect, so a bad file cannot break the app.
+function cleanPlaylist(p) {
+  if (!p || typeof p.id !== "string" || !Array.isArray(p.videos)) return null;
+  const videos = p.videos
+    .filter(v => v && typeof v.id === "string")
+    .map(v => ({
+      id: v.id,
+      title: String(v.title || "Untitled video"),
+      thumbnail: typeof v.thumbnail === "string" ? v.thumbnail : "",
+      duration: typeof v.duration === "number" ? v.duration : null,
+      completed: v.completed === true
+    }));
+  if (videos.length === 0) return null;
+  return {
+    id: p.id,
+    title: String(p.title || "Untitled playlist"),
+    channel: String(p.channel || "Unknown channel"),
+    thumbnail: typeof p.thumbnail === "string" ? p.thumbnail : "",
+    videos
+  };
+}
+
+// New playlists are added. For playlists you already have, completed videos are combined.
+function mergeBackup(data) {
+  if (!data || !Array.isArray(data.playlists)) {
+    throw new Error("This file is not a Playlist Tracker backup.");
+  }
+  let added = 0, merged = 0;
+  data.playlists.map(cleanPlaylist).filter(Boolean).forEach(incoming => {
+    const existing = getPlaylist(incoming.id);
+    if (!existing) {
+      state.playlists.push(incoming);
+      added++;
+      return;
+    }
+    const doneIds = new Set(incoming.videos.filter(v => v.completed).map(v => v.id));
+    existing.videos.forEach(v => { if (doneIds.has(v.id)) v.completed = true; });
+    merged++;
+  });
+  return { added, merged };
+}
+
+function exportBackup() {
+  if (!state.playlists.length) { toast("There is nothing to export yet.", "error"); return; }
+  const data = {
+    app: "playlist-progress-tracker",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    playlists: state.playlists
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "playlist-progress-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  toast("Backup file downloaded.");
+}
+
+async function importBackupFile(file) {
+  if (!file) return;
+  try {
+    const result = mergeBackup(JSON.parse(await file.text()));
+    saveData();
+    cloudSaveAll();
+    renderAll();
+    toast("Backup imported: " + result.added + " new, " + result.merged + " updated.");
+  } catch (err) {
+    toast(err instanceof SyntaxError ? "That file could not be read." : err.message, "error");
+  }
 }
 
 /* ---------- 8. Event listeners and start-up ---------- */
@@ -613,6 +749,11 @@ document.addEventListener("click", event => {
     case "save-key":   saveApiKey(); break;
     case "clear-key":  clearApiKey(); break;
     case "clear-data": clearAllData(); break;
+    case "sign-in":       signInWithGoogle(); break;
+    case "sign-out":      signOutCloud(false); break;
+    case "sign-out-clear": signOutCloud(true); break;
+    case "export-backup": exportBackup(); break;
+    case "import-backup": $("#importFile").click(); break;
     case "toggle-key": {
       const input = $("#apiKeyInput");
       const show = input.type === "password";
@@ -634,6 +775,11 @@ document.addEventListener("change", event => {
   if (box.matches('input[data-action="toggle"]')) toggleVideo(box.dataset.id, box.checked);
 });
 
+$("#importFile").addEventListener("change", async event => {
+  await importBackupFile(event.target.files[0]);
+  event.target.value = "";   // allows choosing the same file again
+});
+
 $("#searchInput").addEventListener("input", event => {
   state.search = event.target.value;
   renderVideoList();
@@ -647,9 +793,12 @@ $("#importForm").addEventListener("submit", event => {
 // Start the app.
 function init() {
   loadData();
+  // Ask the browser not to clear our saved data when storage is low (ignored if unsupported).
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   $("#apiKeyInput").value = state.apiKey;
   renderAll();
   showView("dashboard");
+  initCloud();   // optional account login and sync (see cloud.js)
 
   if (!state.apiKey) {
     setStatus("Add your YouTube API key in Settings to import playlists.");
