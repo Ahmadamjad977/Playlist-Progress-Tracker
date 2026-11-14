@@ -117,7 +117,6 @@
           </div>
         </div>
 
-        <p id="videoCount" class="muted tiny result-count"></p>
         <ul id="videoList" class="videos"></ul>
         <p id="videoEmpty" class="empty" hidden>No videos match your search or filter.</p>
       </section>
@@ -162,26 +161,9 @@
         </div>
 
         <div class="card settings">
-          <h2>Backup and move to another device</h2>
-          <p class="muted">
-            Your progress lives in this browser only. To use the same playlists on your phone or another
-            browser, export a backup file here and import it there. The backup does not include your API key.
-          </p>
-          <div class="row buttons">
-            <button class="btn btn-primary" data-action="export-backup" type="button">Export backup</button>
-            <button class="btn btn-ghost" data-action="import-backup" type="button">Import backup</button>
-          </div>
-          <input id="importFile" type="file" accept=".json,application/json" hidden>
-        </div>
-
-        <div class="card settings">
           <h2>About progress tracking</h2>
           <p class="muted">
             Watching a video on YouTube does not update this app. Tick a video yourself when you finish it.
-          </p>
-          <p class="muted">
-            Progress is calculated by time: completed video length divided by total playlist length.
-            A 60 minute video counts more than a 5 minute video.
           </p>
         </div>
       </section>

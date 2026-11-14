@@ -8,7 +8,7 @@ A simple dashboard for tracking your progress through YouTube playlists. Paste a
 - Shows playlist title, thumbnail, total videos, and each video's thumbnail, title and duration
 - Fetches all videos, including playlists with more than 50 videos
 - Tick and untick videos manually; progress updates instantly
-- Time-based progress: percentage = completed video length / total playlist length x 100, shown with decimals, plus a progress bar and completed / total video count for each playlist
+- Progress percentage, progress bar and completed / total count for each playlist
 - Overall progress across all playlists
 - Search videos and filter by All, Completed or Pending
 - Saves everything in your browser (LocalStorage), so progress survives a refresh or restart
@@ -112,16 +112,6 @@ git push -u origin main
 3. After a minute your site is live at `https://YOUR-USERNAME.github.io/Playlist-Progress-Tracker/`.
 
 Every visitor must add their own API key in Settings. If you use your own key on the live site, restrict it in Google Cloud: open the key, set **Application restrictions** to **Websites**, and add `https://YOUR-USERNAME.github.io/*`.
-
-## Using it on another device
-
-Progress is saved per browser, so a phone or a different browser starts empty. To move your data:
-
-1. On the first device open **Settings**, then **Export backup**. A `.json` file is downloaded.
-2. Send that file to the other device (email, cloud drive, chat).
-3. On the other device open **Settings**, then **Import backup** and choose the file.
-
-Importing a backup adds new playlists and combines completed videos for playlists you already have. The backup does not contain your API key. The key is only needed to import new playlists or use **Sync from YouTube**.
 
 ## Security notes
 
